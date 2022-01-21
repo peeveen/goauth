@@ -59,22 +59,22 @@ func handleAdminTask() goauth.AuthorizedHandlerFunc {
 Your ClaimsAssistant object must implement three methods:
 
 ```
-GetUserClaimsForOpenIDToken(openIDClaims map[string]interface{}) (*goauth.Claims, error)
+GetClaimsForOpenIDToken(openIDClaims map[string]interface{}, tokens *goauth.Tokens) (*goauth.Claims, error)
 ```
 
-This method is called when a successful OpenID Connect login has generated an ID token relating to the logged-in user. Your implementation is given the claims from that token (e.g. "sub", "email", "name"), and you should then perhaps find (or create) corresponding records in your own database. You should then return a map of claims that you want to encode into the access/refresh tokens that goauth will return to your webapp.
+This method is called when a successful OpenID Connect login has generated an ID token relating to the logged-in user. Your implementation is given the claims from that token (e.g. "sub", "email", "name"), and also any access/refresh tokens that the third-party authenticator provided. You should then return a map of claims that you want to encode into the access/refresh tokens that goauth will return to your webapp. How these claims are generated is entirely up to you (perhaps find or create user records in your own database based on the info provided, and encode the IDs of those records?).
 
 ```
-GetUserClaimsForRefreshToken(refreshClaims map[string]interface{}) (*goauth.Claims, error)
+GetClaimsForRefreshToken(refreshClaims map[string]interface{}) (*goauth.Claims, error)
 ```
 
 This method is called when a valid call to the `refreshEndpoint` is made. The claims from the refresh token are provided to this method, and it should return a full set of claims for the new access & refresh tokens that goauth will generate. If you are encoding the same claims into the refresh & access tokens, then this method should be trivial to implement.
 
 ```
-ValidatePasswordLogin(username string, password string, issuer string) (*goauth.Claims, error)
+GetClaimsForPasswordLogin(username string, password string, issuer string) (*goauth.Claims, error)
 ```
 
-Only called if you are using standard name+password login, via the `passwordLoginEndpoint`. Similar to the above, you must validate the login and, if valid, return a map of claims that you want to encode into the access/refresh tokens that goauth will return to your webapp. Return the special `ErrIncorrectPassword` or `ErrUnverifiedUser` errors if either of those situations occur.
+Only called if you are using standard name+password login, via the `passwordLoginEndpoint`. Similar to the above, you must validate the login and, if valid, return a map of claims that you want to encode into the access/refresh tokens that goauth will return to your webapp. The `issuer` argument will your own JWT issuer string, from the YAML config. Return the special `ErrIncorrectPassword` or `ErrUnverifiedUser` errors if either of those situations occur.
 
 # TODO
 

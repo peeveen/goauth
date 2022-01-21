@@ -1,0 +1,100 @@
+# Template for the .yaml file
+
+# Names of endpoints to configure on your router.
+# Even if you are not using ApplyRoutes(), you should at least set the refreshEndpoint so that
+# any cookies are correctly path-scoped.
+# If using ApplyRoutes(), all endpoints are setup to respond to POST requests (apart from the
+# initiateOpenIDConnectAuthenticationEndpoint, obviously).
+endpoints:
+  # This is the path to navigate to when you want to kick off the authentication process.
+  initiateOpenIDConnectAuthenticationEndpoint: /oidcAuth
+  # This is the endpoint from which to obtain tokens once the authentication process has succeeded.
+  openIDConnectLoginEndpoint: /oidcLogin
+  # This one is optional, only use it if your webapp supports basic username/password login.
+  passwordLoginEndpoint: /passwordLogin
+  # For these two endpoints, you must supply an "Authorization: Bearer ......." header with
+  # the appropriate token, unless you are using cookies for that token type, in which case
+  # it should be sent automatically.
+  logoutEndpoint: /logout # bearer token should be access token
+  refreshEndpoint: /refresh # bearer token should be refresh token
+
+# Cookie config.
+# Note that if your ClaimsAssistant returns a LOT of information, cookies may exceed the maximum
+# size (approx 4KB), in which case you'll need to switch to JSON response.
+cookies:
+  # The names of the cookies that the tokens will be returned in. If you do not define either
+  # or both of these, the token(s) will instead be returned in JSON as part of the response body.
+  # The cookies should only really be of interest to goauth code, so there's probably not much
+  # point in changing the actual names of these.
+  #accessTokenName: goauth_access_token
+  refreshTokenName: goauth_refresh_token
+  # These strings will be appended to the appropriate "Set-Cookie" headers.
+  # You should not set anything relating to expiry time, as that is set by goauth.
+  # If you're trying out goauth on a non-secure (i.e. http rather than https) setup, you'll
+  # probably want to remove "Secure"
+  # Note that the refresh token cookie will be automatically scoped to the refreshEndpoint
+  # defined above (e.g. "Path=/refresh;"). If your other endpoints all share a common root
+  # (e.g. /myapp/api/...), feel free to add that root as the path scope for the access
+  # token cookie.
+  accessTokenAttributes: HttpOnly; Secure; SameSite=Strict
+  refreshTokenAttributes: HttpOnly; Secure; SameSite=Strict
+
+# Custom JWT values (for our generated access & refresh tokens)
+jwt:
+  issuerURI: https://www.yourwebsite.com
+  signingSecret: some_big_string_of_your_own_devising____have_some_fun
+  accessTokenDurationMinutes: 120 # 2 hours
+  refreshTokenDurationMinutes: 20160 # 2 weeks
+  # Sometimes tokens from third-party issuers will have an "iat" (Issued At) or
+  # "nbf" (Not Before) claim, indicating the earliest time at which they can be
+  # considered valid. If our server is slightly out of sync with theirs, these
+  # times can be slightly in the future. Give the validator a bit of leeway.
+  acceptableClockSkewSeconds: 10
+
+# Config for OpenID Connect
+openIDConnect:
+  # Length in bytes of random PKCE code verifiers that we will generate.
+  pkceCodeVerifierLength: 64
+  # List of supported OpenID Connect providers, with custom app ID/secrets
+  providers:
+    google:
+      configurationURI: https://accounts.google.com/.well-known/openid-configuration
+      scopes: openid profile email
+      supportedFlows:
+        - implicit
+        - authorization_code
+      supportsPKCE: true
+      clientID: register_an_app_with_google_to_get_this
+      clientSecret: register_an_app_with_google_to_get_this
+
+    microsoft:
+      configurationURI: https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration
+      scopes: openid profile email
+      issuerSubstitutions:
+        - { placeholder: "{tenantid}", claim: tid }
+      supportedFlows:
+        - implicit
+        - authorization_code
+      supportsPKCE: true
+      clientID: register_an_app_with_microsoft_to_get_this
+      clientSecret: register_an_app_with_microsoft_to_get_this
+
+    facebook:
+      configurationURI: https://www.facebook.com/.well-known/openid-configuration/
+      # Annoyingly, facebook neglects to give us a token endpoint in the openid-configuration. This
+      # one from the Facebook Graph API works, sorta-kinda (see the comment about error reporting, below).
+      configurationOverrides:
+        token_endpoint: https://graph.facebook.com/oauth/access_token
+      scopes: openid public_profile email
+      supportedFlows:
+        - implicit
+        - authorization_code
+      supportsPKCE: true
+      # The OAuth standard states that errors should be returned as top-level properties called
+      # 'error' and 'error_description'. Facebook seems to have decided that they know better, and
+      # instead, we get back a top level 'error' object that has 'type' and 'message' properties.
+      # I suppose since it's a GraphAPI endpoint, they get away with it, but it's not very tidy.
+      errorDescriptionProperty: error.message
+      errorTypeProperty: error.type
+      clientID: register_an_app_with_facebook_to_get_this
+      clientSecret: register_an_app_with_facebook_to_get_this

@@ -39,9 +39,9 @@ type StoreAssistant interface {
 // "claims" (key+value pairs) that should be encoded into the resulting access and refresh
 // tokens.
 type ClaimsAssistant interface {
-	GetUserClaimsForOpenIDToken(openIDClaims map[string]interface{}) (*Claims, error)
-	GetUserClaimsForRefreshToken(refreshClaims map[string]interface{}) (*Claims, error)
-	ValidatePasswordLogin(username string, password string, issuer string) (*Claims, error)
+	GetClaimsForOpenIDToken(openIDClaims map[string]interface{}, tokens *Tokens) (*Claims, error)
+	GetClaimsForRefreshToken(refreshClaims map[string]interface{}) (*Claims, error)
+	GetClaimsForPasswordLogin(username string, password string, issuer string) (*Claims, error)
 }
 
 // Claims to encode into tokens
@@ -55,7 +55,7 @@ type Claims struct {
 // via URL arguments. The client can then make the actual "login" call to this service by
 // sending this request, populated with those values.
 type openIDConnectLoginBody struct {
-	OidcToken   string `json:"oidcToken"` // Will only be populated with implicit flow
+	Tokens             // Will only be populated with implicit flow
 	State       string `json:"state"`
 	Nonce       string `json:"nonce"`
 	Provider    string `json:"provider"`
@@ -64,18 +64,16 @@ type openIDConnectLoginBody struct {
 	RedirectURI string `json:"redirectUri"`
 }
 
-// Typical response that we will expect from an OIDC provider when we ask for tokens during authorization_code flow.
-type openIDConnectTokenResponse struct {
-	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
-	ExpiresIn   int    `json:"expires_in"`
-	IDToken     string `json:"id_token"`
+func (body *openIDConnectLoginBody) AsTokens() *Tokens {
+	return &Tokens{body.AccessToken, body.RefreshToken, body.IDToken}
 }
 
-// Our final response to the client, if a successful login has occurred.
-type loginTokens struct {
+// Tokens is a typical response that we will expect from an OIDC provider when we ask for tokens during authorization_code flow.
+// Depending on the request type, not all tokens in this struct will be returned.
+type Tokens struct {
 	AccessToken  string `json:"access_token,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
+	IDToken      string `json:"id_token,omitempty"`
 }
 
 // Request body for username + password login. If an unverified user attempting login is a possibility,
@@ -268,7 +266,7 @@ func handleOidcLogin(params *runtimeParameters) http.HandlerFunc {
 			// Depending on the flow type, we will ...
 			if loginBody.Flow == implicitFlowName {
 				// ... already have an id_token, so go ahead and login with those details.
-				return loginWithIDToken(w, r, oidcProviderConfig, openIDConfiguration, &loginBody, params)
+				return loginWithIDToken(w, r, oidcProviderConfig, openIDConfiguration, loginBody.AsTokens(), loginBody.Nonce, params)
 			} else if loginBody.Flow == authorizationCodeFlowName {
 				// ... have an authorization code. We can request access/id tokens from the provider using that code,
 				// along with our client secret, and (optionally) our PKCE code verifier.
@@ -300,7 +298,7 @@ func handleRefresh(params *runtimeParameters) http.HandlerFunc {
 			if err != nil {
 				return &httperr.Error{HTTPStatus: http.StatusUnauthorized, Error: err}
 			}
-			claims, err := params.ClaimsAssistant.GetUserClaimsForRefreshToken(refreshTokenClaims)
+			claims, err := params.ClaimsAssistant.GetClaimsForRefreshToken(refreshTokenClaims)
 			if err != nil {
 				return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
 			}
@@ -352,7 +350,7 @@ func handlePasswordLogin(params *runtimeParameters) http.HandlerFunc {
 			if err != nil {
 				return &httperr.Error{HTTPStatus: http.StatusBadRequest, Error: err}
 			}
-			userClaims, err := params.ClaimsAssistant.ValidatePasswordLogin(loginBody.Username, loginBody.Password, params.Config.JWT.IssuerURI)
+			userClaims, err := params.ClaimsAssistant.GetClaimsForPasswordLogin(loginBody.Username, loginBody.Password, params.Config.JWT.IssuerURI)
 			if err == ErrUnverifiedUser {
 				if loginBody.UnverifiedUserRedirectURI != "" {
 					// An unverified user has attempted to login without first verifying their email via the link that they should have been sent.
@@ -450,19 +448,18 @@ func loginWithAuthorizationCode(w http.ResponseWriter, r *http.Request, oidcProv
 	}
 	defer tokenResponse.Body.Close()
 	// Parse the response (it might be an error if any of the verification codes are wrong).
-	var tokenBody openIDConnectTokenResponse
+	var tokenBody Tokens
 	err = parseOidcResponse(oidcProviderConfig, tokenResponse.Body, &tokenBody, params.Logger)
 	if err != nil {
 		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
 	}
 	// If all is well, we will have an ID token, which we can go ahead and log in with.
-	loginBody.OidcToken = tokenBody.IDToken
-	return loginWithIDToken(w, r, oidcProviderConfig, openIDConfiguration, loginBody, params)
+	return loginWithIDToken(w, r, oidcProviderConfig, openIDConfiguration, &tokenBody, loginBody.Nonce, params)
 }
 
 // Once we receive the id_token, we have to validate it, in case some attacker is trying to push a made-up identity onto us.
 // Fortunately, JWT ID tokens are signed, and only the provider's key set contains the keys that can be used to validate that signature.
-func loginWithIDToken(w http.ResponseWriter, r *http.Request, oidcProviderConfig *oidcProviderConfiguration, openIDConfiguration *oidcConfiguration, loginBody *openIDConnectLoginBody, params *runtimeParameters) *httperr.Error {
+func loginWithIDToken(w http.ResponseWriter, r *http.Request, oidcProviderConfig *oidcProviderConfiguration, openIDConfiguration *oidcConfiguration, tokens *Tokens, nonce string, params *runtimeParameters) *httperr.Error {
 	// The JWT id token will signed with a private key. We need the public keys from the
 	// provider in order to validate the JWT. They provide them in JSON format via a standard
 	// URI that is part of their Open ID Connect configuration.
@@ -472,7 +469,7 @@ func loginWithIDToken(w http.ResponseWriter, r *http.Request, oidcProviderConfig
 		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
 	}
 	params.Logger.Debug(fmt.Sprintf("Retrieved %d keys from %s", set.Len(), openIDConfiguration.JwksURI))
-	jwtBytes := []byte(loginBody.OidcToken)
+	jwtBytes := []byte(tokens.IDToken)
 
 	// We have to do this bit because of Microsoft, but other multi-tenant authorities might get
 	// added in the future ...
@@ -512,7 +509,7 @@ func loginWithIDToken(w http.ResponseWriter, r *http.Request, oidcProviderConfig
 		// There should be a claim in the JWT payload that matches the
 		// "nonce" value that we provided back when we initiated the
 		// authentication process (back in handleOidcAuth).
-		jwt.WithClaimValue("nonce", loginBody.Nonce),
+		jwt.WithClaimValue("nonce", nonce),
 		// The "aud" (Audience) value in token should be our Client ID.
 		jwt.WithAudience(oidcProviderConfig.ClientID),
 		// Annoyingly, Microsoft's keys don't have an "alg" value (telling
@@ -536,7 +533,7 @@ func loginWithIDToken(w http.ResponseWriter, r *http.Request, oidcProviderConfig
 	if err != nil {
 		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
 	}
-	userClaims, err := params.ClaimsAssistant.GetUserClaimsForOpenIDToken(parsedTokenClaims)
+	userClaims, err := params.ClaimsAssistant.GetClaimsForOpenIDToken(parsedTokenClaims, tokens)
 	if err != nil {
 		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
 	}
@@ -584,7 +581,7 @@ func handleSuccessfulLogin(w http.ResponseWriter, r *http.Request, userClaims *C
 	}
 	params.Logger.Debug("Added refresh token to Redis: ", refreshToken)
 
-	tokens := loginTokens{}
+	tokens := Tokens{}
 	if params.Config.Cookies.AccessTokenName == "" {
 		tokens.AccessToken = accessToken
 	} else {

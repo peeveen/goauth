@@ -59,10 +59,10 @@ func handleAdminTask() goauth.AuthorizedHandlerFunc {
 Your ClaimsAssistant object must implement three methods:
 
 ```
-GetUserClaimsForOpenIDToken(token jwt.Token) (*goauth.Claims, error)
+GetUserClaimsForOpenIDToken(openIDClaims map[string]interface{}) (*goauth.Claims, error)
 ```
 
-This method is called when a successful OpenID Connect login has generated an ID token relating to the logged-in user. Your implementation should read the relevant claims from that token (e.g. "sub", "email", "name") and then perhaps find (or create) corresponding records in your own database. You should then return a map of claims that you want to encode into the access/refresh tokens that GoAuth will return to your webapp.
+This method is called when a successful OpenID Connect login has generated an ID token relating to the logged-in user. Your implementation is given the claims from that token (e.g. "sub", "email", "name"), and you should then perhaps find (or create) corresponding records in your own database. You should then return a map of claims that you want to encode into the access/refresh tokens that goauth will return to your webapp.
 
 ```
 GetUserClaimsForRefreshToken(refreshClaims map[string]interface{}) (*goauth.Claims, error)
@@ -74,7 +74,7 @@ This method is called when a valid call to the `refreshEndpoint` is made. The cl
 ValidatePasswordLogin(username string, password string, issuer string) (*goauth.Claims, error)
 ```
 
-Only called if you are using standard name+password login, via the `passwordLoginEndpoint`. Similar to the above, you must validate the login and, if valid, return a map of claims that you want to encode into the access/refresh tokens that GoAuth will return to your webapp. Return the special `ErrIncorrectPassword` or `ErrUnverifiedUser` errors if either of those situations occur.
+Only called if you are using standard name+password login, via the `passwordLoginEndpoint`. Similar to the above, you must validate the login and, if valid, return a map of claims that you want to encode into the access/refresh tokens that goauth will return to your webapp. Return the special `ErrIncorrectPassword` or `ErrUnverifiedUser` errors if either of those situations occur.
 
 # TODO
 

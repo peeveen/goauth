@@ -39,7 +39,7 @@ type StoreAssistant interface {
 // "claims" (key+value pairs) that should be encoded into the resulting access and refresh
 // tokens.
 type ClaimsAssistant interface {
-	GetUserClaimsForOpenIDToken(token jwt.Token) (*Claims, error)
+	GetUserClaimsForOpenIDToken(openIDClaims map[string]interface{}) (*Claims, error)
 	GetUserClaimsForRefreshToken(refreshClaims map[string]interface{}) (*Claims, error)
 	ValidatePasswordLogin(username string, password string, issuer string) (*Claims, error)
 }
@@ -532,7 +532,11 @@ func loginWithIDToken(w http.ResponseWriter, r *http.Request, oidcProviderConfig
 	}
 	// At this point, we are satisfied.
 	params.Logger.Debug("Successfully parsed ID token.")
-	userClaims, err := params.ClaimsAssistant.GetUserClaimsForOpenIDToken(parsedToken)
+	parsedTokenClaims, err := parsedToken.AsMap(context.Background())
+	if err != nil {
+		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
+	}
+	userClaims, err := params.ClaimsAssistant.GetUserClaimsForOpenIDToken(parsedTokenClaims)
 	if err != nil {
 		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
 	}

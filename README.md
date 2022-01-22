@@ -37,7 +37,23 @@ To get things rolling, from your webapp:
   - `flow` should be one of the flow types that the provider supports (again, configured in YAML).
   - `redirect_uri` should be a page in your webapp that expects to receive the appropriate OAuth parameters in the URL query.
 - The client will be redirected to the appropriate third-party authentication page.
-- When the third-party authentication redirects back to your webapp with a URL chock full of exciting codes and stuff, make a POST call (using axios or whatever) to the `openIDConnectLoginEndpoint` (see code for expected request body). All being well, the response should be access and refresh tokens, in either JSON or cookies (as per configuration).
+- When the third-party authentication redirects back to your webapp with a URL chock full of exciting codes and stuff, make a POST call (using axios or whatever) to the `openIDConnectLoginEndpoint`. e.g.:
+```
+axios.post('https://my_api_server:8080/oidcLogin', {
+	id_token: idTokenFromUrlParams, // implicit flow only
+	code: codeFromUrlParams, // authorization_code flow only
+	state: stateFromUriParams,
+	nonce: storedNonce, // you'll get the state value in the URI params, but it's up to you to recall/calculate the associated nonce value.
+	flow: flow, // same values as before for the rest of these
+	provider: provider,
+	redirect_uri: 'http://www.yourwebsite.com/login',
+}, {
+	withCredentials: true // Required for cookies!
+}) .then((response) => {
+	... deal with the response ...
+})
+```
+- All being well, the response should be access and refresh tokens, in either JSON or cookies (as per configuration).
 - Use the access token as the Authorization Bearer token in future calls to your API, or let the cookies take care of themselves. To make things easier, you can wrap your protected HTTP handlers with Authorized() to automatically perform token parsing and validation. The claims from the access token are passed to your handler method for you to perform any manual authorization, e.g.:
 
 ```

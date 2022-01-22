@@ -51,6 +51,8 @@ type oidcProviderConfiguration struct {
 	// JSON property path to the error type in any possible error response. Usually simply "error",
 	// unless the provider doesn't adhere to OAuth standards for some reason (bloody Facebook, innit!).
 	ErrorTypeProperty string `yaml:"errorTypeProperty"`
+	// Any extra stuff to append to the authentication URL
+	CustomAuthParameters string `yaml:"customAuthParameters"`
 }
 
 // Typical information contained in a provider's "well-known" JSON configuration.

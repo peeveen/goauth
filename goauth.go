@@ -237,7 +237,16 @@ func handleOidcAuth(params *runtimeParameters) http.HandlerFunc {
 				return &httperr.Error{HTTPStatus: http.StatusBadRequest, Error: fmt.Errorf("unknown authorization flow type: %s", flow)}
 			}
 			// Redirect the client browser to the provider's authorization endpoint URI, loaded up with our relevant URL query parameters.
-			authURL := fmt.Sprintf("%s?nonce=%s&scope=%s&state=%s&response_type=%s&client_id=%s&redirect_uri=%s%s", openIDConfiguration.AuthorizationEndpoint, nonce, oidcProviderConfig.Scopes, state, responseType, oidcProviderConfig.ClientID, redirectURI, codeChallengeParam)
+			authURL := fmt.Sprintf("%s?nonce=%s&scope=%s&state=%s&response_type=%s&client_id=%s&redirect_uri=%s%s%s",
+				openIDConfiguration.AuthorizationEndpoint,
+				nonce,
+				oidcProviderConfig.Scopes,
+				state,
+				responseType,
+				oidcProviderConfig.ClientID,
+				redirectURI,
+				codeChallengeParam,
+				oidcProviderConfig.CustomAuthParameters)
 			w.Header().Set("Location", authURL)
 			w.WriteHeader(http.StatusFound)
 			return nil

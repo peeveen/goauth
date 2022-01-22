@@ -66,6 +66,8 @@ openIDConnect:
       supportsPKCE: true
       clientID: register_an_app_with_google_to_get_this
       clientSecret: register_an_app_with_google_to_get_this
+      # Custom string to append to the initial authentication URL (e.g. "&foo=bar&blah=yap")
+      customAuthParameters:
 
     microsoft:
       configurationURI: https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration
@@ -78,6 +80,8 @@ openIDConnect:
       supportsPKCE: true
       clientID: register_an_app_with_microsoft_to_get_this
       clientSecret: register_an_app_with_microsoft_to_get_this
+      # Custom string to append to the initial authentication URL (e.g. "&foo=bar&blah=yap")
+      customAuthParameters:
 
     facebook:
       configurationURI: https://www.facebook.com/.well-known/openid-configuration/
@@ -98,3 +102,5 @@ openIDConnect:
       errorTypeProperty: error.type
       clientID: register_an_app_with_facebook_to_get_this
       clientSecret: register_an_app_with_facebook_to_get_this
+      # Custom string to append to the initial authentication URL (e.g. "&foo=bar&blah=yap")
+      customAuthParameters:

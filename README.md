@@ -33,10 +33,10 @@ To get things rolling, from your webapp:
 
 - Navigate to the `initiateOpenIDConnectAuthenticationEndpoint` to trigger an authentication process, e.g.:
   `http://your_api_server:8080/oidcAuth?state=123456789&nonce=abcdefgh&provider=facebook&flow=authorization_code&redirect_uri=http://www.yourwebsite.com/login`
-  - `provider` should match one of the providers configured in the YAML.
+  - `provider` should match one of the providers configured in the YAML (you _have_ registered an app with that provider, haven't you?).
   - `flow` should be one of the flow types that the provider supports (again, configured in YAML).
   - `redirect_uri` should be a page in your webapp that expects to receive the appropriate OAuth parameters in the URL query.
-- The client will be redirected to the appropriate third-party authentication page (you _have_ registered an app with that provider, haven't you?).
+- The client will be redirected to the appropriate third-party authentication page.
 - When the third-party authentication redirects back to your webapp with a URL chock full of exciting codes and stuff, make a POST call (using axios or whatever) to the `openIDConnectLoginEndpoint` (see code for expected request body). All being well, the response should be access and refresh tokens, in either JSON or cookies (as per configuration).
 - Use the access token as the Authorization Bearer token in future calls to your API, or let the cookies take care of themselves. To make things easier, you can wrap your protected HTTP handlers with Authorized() to automatically perform token parsing and validation. The claims from the access token are passed to your handler method for you to perform any manual authorization, e.g.:
 

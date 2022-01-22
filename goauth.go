@@ -61,7 +61,7 @@ type openIDConnectLoginBody struct {
 	Provider    string `json:"provider"`
 	Flow        string `json:"flow"`
 	Code        string `json:"code"`
-	RedirectURI string `json:"redirectUri"`
+	RedirectURI string `json:"redirect_uri"`
 }
 
 func (body *openIDConnectLoginBody) AsTokens() *Tokens {
@@ -81,7 +81,7 @@ type Tokens struct {
 type passwordLoginBody struct {
 	Username                  string `json:"username"`
 	Password                  string `json:"password"`
-	UnverifiedUserRedirectURI string `json:"unverifiedUserRedirectUri"`
+	UnverifiedUserRedirectURI string `json:"unverified_user_redirect_uri"`
 }
 
 // String identifiers for supported authorization flows.

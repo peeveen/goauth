@@ -196,7 +196,7 @@ func handleOidcAuth(params *runtimeParameters) http.HandlerFunc {
 			state := r.URL.Query().Get("state")
 			flow := r.URL.Query().Get("flow")
 			nonce := r.URL.Query().Get("nonce")
-			redirectURI := r.URL.Query().Get("redirectUri")
+			redirectURI := r.URL.Query().Get("redirect_uri")
 			// OK, find out what provider we're using ...
 			oidcProviderConfig, openIDConfiguration, err := params.getOpenIDConnectProviderInfo(provider)
 			if err != nil {

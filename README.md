@@ -32,7 +32,7 @@ ApplyRoutes() works with the standard gorilla muxer. If you want to use another,
 To get things rolling, from your webapp:
 
 - Navigate to the `initiateOpenIDConnectAuthenticationEndpoint` to trigger an authentication process, e.g.:
-  `http://your_api_server:8080/oidcAuth?state=123456789&nonce=abcdefgh&provider=facebook&flow=authorization_code&redirectUri=http://www.yourwebsite.com/login`
+  `http://your_api_server:8080/oidcAuth?state=123456789&nonce=abcdefgh&provider=facebook&flow=authorization_code&redirect_uri=http://www.yourwebsite.com/login`
   - `provider` should match one of the providers configured in the YAML.
   - `flow` should be one of the flow types that the provider supports (again, configured in YAML).
   - `redirectUri` should be a page in your webapp that expects to receive the appropriate OAuth parameters in the URL query.

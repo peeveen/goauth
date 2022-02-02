@@ -442,9 +442,7 @@ func loginWithAuthorizationCode(w http.ResponseWriter, r *http.Request, oidcProv
 	postData.Add("client_secret", oidcProviderConfig.ClientSecret)
 	postData.Add("grant_type", authorizationCodeFlowName)
 	postData.Add("code", loginBody.Code)
-	if loginBody.RedirectURI != "" {
-		postData.Add("redirect_uri", loginBody.RedirectURI)
-	}
+	postData.Add("redirect_uri", loginBody.RedirectURI)
 	// If PKCE is involved, add our code verifier. We will have stored it in Redis.
 	if oidcProviderConfig.SupportsPkce {
 		codeVerifier, err := getPkceCodeVerifier(loginBody.State, loginBody.Nonce, params.StoreAssistant)

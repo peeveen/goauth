@@ -4,6 +4,7 @@ Pre-made OAuth/OpenIDConnect and general authorization hooks for webapp login.
 
 - Currently supports Google, Facebook and Microsoft "out of the box", with authorization code or implicit flows.
 - You can add more via YAML configuration.
+- Automatic JWT validation, whether supplied via header or cookie.
 
 # Typical usage
 

@@ -412,7 +412,7 @@ func getHeaderToken(r *http.Request, cookieName string) (string, error) {
 				return accessTokenCookie.Value, nil
 			}
 		}
-		return "", fmt.Errorf("no access token found in request")
+		return "", fmt.Errorf("no bearer token found in request")
 	}
 	return authorizationHeaderParts[1], nil
 }
@@ -446,10 +446,11 @@ func loginWithAuthorizationCode(w http.ResponseWriter, r *http.Request, oidcProv
 	// If PKCE is involved, add our code verifier. We will have stored it in Redis.
 	if oidcProviderConfig.SupportsPkce {
 		codeVerifier, err := getPkceCodeVerifier(loginBody.State, loginBody.Nonce, params.StoreAssistant)
-		if err != nil {
-			return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
+		if err == nil {
+			postData.Add("code_verifier", codeVerifier)
+		} else {
+			params.Logger.Debug(fmt.Sprintf("No code verifier stored for key '%s%s'", loginBody.State, loginBody.Nonce))
 		}
-		postData.Add("code_verifier", codeVerifier)
 	}
 	tokenResponse, err := http.PostForm(openIDConfiguration.TokenEndpoint, postData)
 	if err != nil {
@@ -506,8 +507,7 @@ func loginWithIDToken(w http.ResponseWriter, r *http.Request, oidcProviderConfig
 	})
 
 	params.Logger.Debug("Parsing and validating ID token from issuer.")
-	parsedToken, err := jwt.Parse(
-		jwtBytes,
+	parsingOptions := []jwt.ParseOption{
 		// We want an error back if any of the validation options fail.
 		jwt.WithValidate(true),
 		// Here are the keys that can be used to validate the token.
@@ -515,10 +515,6 @@ func loginWithIDToken(w http.ResponseWriter, r *http.Request, oidcProviderConfig
 		// choose the key that matches the "kid" (key ID) and
 		// "alg" (signing algorithm) in the JWT header.
 		jwt.WithKeySet(set),
-		// There should be a claim in the JWT payload that matches the
-		// "nonce" value that we provided back when we initiated the
-		// authentication process (back in handleOidcAuth).
-		jwt.WithClaimValue("nonce", nonce),
 		// The "aud" (Audience) value in token should be our Client ID.
 		jwt.WithAudience(oidcProviderConfig.ClientID),
 		// Annoyingly, Microsoft's keys don't have an "alg" value (telling
@@ -528,10 +524,20 @@ func loginWithIDToken(w http.ResponseWriter, r *http.Request, oidcProviderConfig
 		// Sometimes we get tokens that claim to have been issued at a
 		// time a few seconds in the future, and the validation will
 		// fail unless we allow for some clock skew.
-		jwt.WithAcceptableSkew(time.Second*time.Duration(params.Config.JWT.AcceptableClockSkewSeconds)),
+		jwt.WithAcceptableSkew(time.Second * time.Duration(params.Config.JWT.AcceptableClockSkewSeconds)),
 		// Make sure the issuer of this JWT matches the expected issuer
 		// by calling our own issuer validation function.
 		jwt.WithValidator(issuerValidationFunction),
+	}
+	if nonce != "" {
+		// There should be a claim in the JWT payload that matches the
+		// "nonce" value that we provided back when we initiated the
+		// authentication process (back in handleOidcAuth).
+		parsingOptions = append(parsingOptions, jwt.WithClaimValue("nonce", nonce))
+	}
+	parsedToken, err := jwt.Parse(
+		jwtBytes,
+		parsingOptions...,
 	)
 	if err != nil {
 		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}

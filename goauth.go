@@ -178,7 +178,7 @@ func Build(buildParams *BuildParameters) (*Service, error) {
 
 			// If password login is enabled, enable that endpoint.
 			if buildParams.Config.Endpoints.PasswordLoginEndpoint != "" {
-				router.HandleFunc(fmt.Sprintf("/%s", buildParams.Config.Endpoints.PasswordLoginEndpoint), passwordLoginHandler).Methods("POST")
+				router.HandleFunc(buildParams.Config.Endpoints.PasswordLoginEndpoint, passwordLoginHandler).Methods("POST")
 			}
 		},
 	}

@@ -3,7 +3,10 @@ package goauth
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
+
+	httperr "github.com/peeveen/httperrorhandler"
 )
 
 // Given a map (created from JSON), look for error information in the property specified by the given
@@ -56,4 +59,80 @@ func parseOidcError(oidcProviderConfig *oidcProviderConfiguration, bytes []byte)
 		}
 	}
 	return nil
+}
+
+func handleClaimsAssistantError(e error) *httperr.Error {
+	httpError, ok := e.(*httperr.Error)
+	if ok {
+		return httpError
+	}
+	return createClaimsAssistantError(e)
+}
+
+const goAuthURIOrigin = "https://github.com/peeveen/goauth/"
+
+func getHTTPErrorType(identifier string) string {
+	return fmt.Sprintf("%s%s", goAuthURIOrigin, identifier)
+}
+
+const unknownProviderErrorType = "unknownProvider"         // User has asked to authenticate with a provider that we don't know about.
+const unauthorizedErrorType = "unauthorized"               // The provided credentials were invalid.
+const communicationErrorType = "communicationError"        // A communications error occurred.
+const malformedRequestErrorType = "malformedRequest"       // The request was invalid in some way (missing fields, or badly formed JSON, etc)
+const unknownFlowTypeErrorType = "unknownFlowType"         // The requested authorization flow type is not one that we are aware of.
+const unsupportedFlowTypeErrorType = "unsupportedFlowType" // The requested authorization flow type is not supported by the provider.
+const storeAssistantErrorType = "storeAssistantError"      // An error occurred while attempting to use the StoreAssistant
+const tokenCreationErrorType = "tokenCreation"             // An error occurred while creating/signing JWT tokens.
+const internalErrorType = "internalError"                  // Some other internal error occurred.
+const claimsAssistantErrorType = "claimsAssistantError"    // An error occurred during a request to the ClaimsAssistant
+const incorrectPasswordErrorType = "incorrectPassword"     // An incorrect password was supplied to the password login endpoint.
+const unknownUserErrorType = "unknownUser"                 // An unknown username was supplied to the password login endpoint.
+
+func createUnknownOpenIDConnectProviderError(provider string) *httperr.Error {
+	return &httperr.Error{Type: getHTTPErrorType(unknownProviderErrorType), Status: http.StatusBadRequest, Detail: fmt.Sprintf("Unknown OpenID Connect provider: '%s'", provider)}
+}
+
+func createUnauthorizedError(e error, detail string) *httperr.Error {
+	return httperr.Wrap(e, &httperr.Error{Type: getHTTPErrorType(unauthorizedErrorType), Status: http.StatusUnauthorized, Detail: detail})
+}
+
+func createCommunicationError(e error, detail string) *httperr.Error {
+	return httperr.Wrap(e, &httperr.Error{Type: getHTTPErrorType(communicationErrorType), Status: http.StatusInternalServerError, Detail: detail})
+}
+
+func createMalformedRequestError(e error, detail string) *httperr.Error {
+	return httperr.Wrap(e, &httperr.Error{Type: getHTTPErrorType(malformedRequestErrorType), Status: http.StatusBadRequest, Detail: detail})
+}
+
+func createUnknownFlowTypeError(flow string) *httperr.Error {
+	return &httperr.Error{Type: getHTTPErrorType(unknownFlowTypeErrorType), Status: http.StatusBadRequest, Detail: fmt.Sprintf("Unknown authorization flow type: %s", flow)}
+}
+
+func createStoreAssistantError(e error, detail string) *httperr.Error {
+	return httperr.Wrap(e, &httperr.Error{Type: getHTTPErrorType(storeAssistantErrorType), Status: http.StatusInternalServerError, Detail: detail})
+}
+
+func createTokenCreationError(e error, detail string) *httperr.Error {
+	return httperr.Wrap(e, &httperr.Error{Type: getHTTPErrorType(tokenCreationErrorType), Status: http.StatusInternalServerError, Detail: detail})
+}
+
+func createInternalError(e error, detail string) *httperr.Error {
+	return httperr.Wrap(e, &httperr.Error{Type: getHTTPErrorType(internalErrorType), Status: http.StatusInternalServerError, Detail: detail})
+}
+
+func createBadFlowTypeError(provider string, flow string) *httperr.Error {
+	return &httperr.Error{Type: getHTTPErrorType(unsupportedFlowTypeErrorType), Status: http.StatusBadRequest, Detail: fmt.Sprintf("The provider '%s' does not support '%s' flow", provider, flow)}
+}
+
+func createClaimsAssistantError(e error) *httperr.Error {
+	return httperr.Wrap(e, &httperr.Error{Type: getHTTPErrorType(claimsAssistantErrorType), Status: http.StatusInternalServerError, Detail: e.Error()})
+}
+
+func createIncorrectPasswordError() *httperr.Error {
+	return &httperr.Error{Type: getHTTPErrorType(incorrectPasswordErrorType), Status: http.StatusUnauthorized, Detail: "The supplied password was incorrect."}
+}
+
+// CreateNoSuchUserError will create an HTTP error containing a message that reads "The user '....' does not exist."
+func CreateNoSuchUserError(user string) *httperr.Error {
+	return &httperr.Error{Type: getHTTPErrorType(unknownUserErrorType), Status: http.StatusUnauthorized, Detail: fmt.Sprintf("The user '%s' does not exist.", user)}
 }

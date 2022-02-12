@@ -134,5 +134,5 @@ func createIncorrectPasswordError() *httperr.Error {
 
 // CreateNoSuchUserError will create an HTTP error containing a message that reads "The user '....' does not exist."
 func CreateNoSuchUserError(user string) *httperr.Error {
-	return &httperr.Error{Type: getHTTPErrorType(unknownUserErrorType), Status: http.StatusUnauthorized, Detail: "The user '%s' does not exist."}
+	return &httperr.Error{Type: getHTTPErrorType(unknownUserErrorType), Status: http.StatusUnauthorized, Detail: fmt.Sprintf("The user '%s' does not exist.", user)}
 }

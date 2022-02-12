@@ -19,6 +19,7 @@ goAuthBuildParams := &goauth.BuildParameters{
 	StoreAssistant:  goauth.NewRedisStoreAssistant(redisDb), // or roll your own
 	ClaimsAssistant: (your_implementation_of_ClaimsAssistant),
 	Logger:          logrus.StandardLogger(),
+	ErrorHandler:    (handler for HTTP errors)
 }
 goAuthService, err := goauth.Build(goAuthBuildParams)
 if err != nil {
@@ -27,6 +28,8 @@ if err != nil {
 router := mux.NewRouter()
 goAuthService.ApplyRoutes(router)
 ```
+
+goauth makes use of the [httperrorhandler](http://github.com/peeveen/httperrorhandler) package, so your `ErrorHandler` should deal with the `httperrorhandler.Error` type.
 
 ApplyRoutes() works with the standard gorilla muxer. If you want to use another, the endpoint methods are exposed in the Service object.
 
@@ -39,6 +42,7 @@ To get things rolling, from your webapp:
   - `redirect_uri` should be a page in your webapp that expects to receive the appropriate OAuth parameters in the URL query.
 - The client will be redirected to the appropriate third-party authentication page.
 - When the third-party authentication redirects back to your webapp with a URL chock full of exciting codes and stuff, make a POST call (using axios or whatever) to the `openIDConnectLoginEndpoint`. e.g.:
+
 ```
 axios.post('https://my_api_server:8080/oidcLogin', {
 	id_token: idTokenFromUrlParams, // implicit flow only
@@ -54,6 +58,7 @@ axios.post('https://my_api_server:8080/oidcLogin', {
 	... deal with the response ...
 })
 ```
+
 - All being well, the response should be access and refresh tokens, in either JSON or cookies (as per configuration). Cookies will be stored automatically by your browser.
 - Use the access token as the Authorization Bearer token in future calls to your API, or let the cookies take care of themselves. To make things easier, you can wrap your protected HTTP handlers with Authorized() to automatically perform token parsing and validation. The claims from the access token are passed to your handler method for you to perform any manual authorization, e.g.:
 
@@ -91,7 +96,15 @@ This method is called when a valid call to the `refreshEndpoint` is made. The cl
 GetClaimsForPasswordLogin(username string, password string, issuer string) (*goauth.Claims, error)
 ```
 
-Only called if you are using standard name+password login, via the `passwordLoginEndpoint`. Similar to the above, you must validate the login and, if valid, return a map of claims that you want to encode into the access/refresh tokens that goauth will return to your webapp. The `issuer` argument will be your own JWT issuer string, from the YAML config. Return the special `ErrIncorrectPassword` or `ErrUnverifiedUser` errors if either of those situations occur.
+Only called if you are using standard name+password login, via the `passwordLoginEndpoint`. Similar to the above, you must validate the login and, if valid, return a map of claims that you want to encode into the access/refresh tokens that goauth will return to your webapp. The `issuer` argument will be your own JWT issuer string, from the YAML config.
+
+# Error handling
+
+All goauth endpoints utilise the [httperrorhandler](http://github.com/peeveen/httperrorhandler) package, and produce [RFC-7807](https://datatracker.ietf.org/doc/html/rfc7807)-like errors.
+
+Your ClaimsAssistant implementation can return any type of error, and it will be wrapped in an `httperrorhandler.Error` error.
+
+Alternatively, if your implementation produces `httperrorhandler.Error` errors, these will be returned directly to the client, so if you want your webapp to capture specific types of error and respond appropriately, you might want to make use of that. For example, a user attempts a password login, but they have not yet verified themselves by clicking a link sent via email. If your `GetClaimsForPasswordLogin` method returns an `httperrorhandler.Error` with a `Type` field specific to your application, your front-end can capture that, and redirect the user to a "Re-send verification email" page.
 
 # TODO
 

@@ -127,12 +127,12 @@ type runtimeParameters struct {
 func (params *runtimeParameters) getOpenIDConnectProviderInfo(provider string) (*oidcProviderConfiguration, *oidcConfiguration, *httperr.Error) {
 	oidcProviderConfig, found := params.Config.OIDC.Providers[provider]
 	if !found {
-		return nil, nil, &httperr.Error{HTTPStatus: http.StatusBadRequest, Error: fmt.Errorf("unknown OIDC provider: '%s'", provider)}
+		return nil, nil, createUnknownOpenIDConnectProviderError(provider)
 	}
 	// Get the OIDC configuration from the provider.
 	openIDConfiguration, err := oidcProviderConfig.getConfiguration()
 	if err != nil {
-		return nil, nil, &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
+		return nil, nil, createCommunicationError(err, fmt.Sprintf("Failed to obtain the Open ID Connect configuration for the '%s' provider.", provider))
 	}
 	return &oidcProviderConfig, openIDConfiguration, nil
 }
@@ -204,7 +204,7 @@ func handleOidcAuth(params *runtimeParameters) http.HandlerFunc {
 			}
 			// ... and make sure it supports the request authorization flow type.
 			if !oidcProviderConfig.supportsFlow(flow) {
-				return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: fmt.Errorf("the provider '%s' does not support '%s' flow", provider, flow)}
+				return createBadFlowTypeError(provider, flow)
 			}
 			// If using implicit flow type, we simply request the id_token outright. This returns the id_token information to the client browser.
 			// If using authorization_code flow type, we request an authorization code that we will use later to obtain tokens. The authorization code
@@ -229,12 +229,12 @@ func handleOidcAuth(params *runtimeParameters) http.HandlerFunc {
 					// Store the code verifier in Redis. We will need it later. Store it against the state & nonce.
 					err := params.StoreAssistant.SetValue(fmt.Sprintf("%s%s", state, nonce), codeVerifier, time.Hour)
 					if err != nil {
-						return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
+						return createStoreAssistantError(err, "Failed to store the code verifier.")
 					}
 					codeChallengeParam = fmt.Sprintf("&code_challenge=%s&code_challenge_method=S256", codeChallenge)
 				}
 			} else {
-				return &httperr.Error{HTTPStatus: http.StatusBadRequest, Error: fmt.Errorf("unknown authorization flow type: %s", flow)}
+				return createUnknownFlowTypeError(flow)
 			}
 			// Redirect the client browser to the provider's authorization endpoint URI, loaded up with our relevant URL query parameters.
 			authURL := fmt.Sprintf("%s?nonce=%s&scope=%s&state=%s&response_type=%s&client_id=%s&redirect_uri=%s%s%s",
@@ -265,7 +265,7 @@ func handleOidcLogin(params *runtimeParameters) http.HandlerFunc {
 			defer r.Body.Close()
 			err := json.NewDecoder(r.Body).Decode(&loginBody)
 			if err != nil {
-				return &httperr.Error{HTTPStatus: http.StatusBadRequest, Error: err}
+				return createMalformedRequestError(err, "Failed to parse openIDConnectLoginBody JSON.")
 			}
 			// OK, find out what provider we're using ...
 			oidcProviderConfig, openIDConfiguration, httpErr := params.getOpenIDConnectProviderInfo(loginBody.Provider)
@@ -281,7 +281,7 @@ func handleOidcLogin(params *runtimeParameters) http.HandlerFunc {
 				// along with our client secret, and (optionally) our PKCE code verifier.
 				return loginWithAuthorizationCode(w, r, oidcProviderConfig, openIDConfiguration, &loginBody, params)
 			} else {
-				return &httperr.Error{HTTPStatus: http.StatusBadRequest, Error: fmt.Errorf("unknown authorization flow type: %s", loginBody.Flow)}
+				return createUnknownFlowTypeError(loginBody.Flow)
 			}
 		}, params.ErrorHandler)
 	}
@@ -294,22 +294,22 @@ func handleRefresh(params *runtimeParameters) http.HandlerFunc {
 		httperr.Handle(w, r, func(w http.ResponseWriter, r *http.Request) *httperr.Error {
 			refreshToken, err := getHeaderToken(r, params.Config.Cookies.RefreshTokenName)
 			if err != nil {
-				return &httperr.Error{HTTPStatus: http.StatusUnauthorized, Error: err}
+				return createUnauthorizedError(err, "No refresh token provided.")
 			}
 			// Does Redis have a record of this refresh token? If not,
 			// then it's an unauthorized request.
 			accessToken, err := params.StoreAssistant.GetValue(refreshToken)
 			if err != nil {
-				return &httperr.Error{HTTPStatus: http.StatusUnauthorized, Error: fmt.Errorf("refresh token was not found, or has expired. Err: %s", err)}
+				return createUnauthorizedError(err, "Refresh token was not recognized, or has expired.")
 			}
 			// Validate the token, and get the user claims from it.
 			refreshTokenClaims, err := parseAndValidateToken(refreshToken, params.KeySet, params.Config.JWT.IssuerURI)
 			if err != nil {
-				return &httperr.Error{HTTPStatus: http.StatusUnauthorized, Error: err}
+				return createUnauthorizedError(err, "The supplied refresh token is invalid.")
 			}
 			claims, err := params.ClaimsAssistant.GetClaimsForRefreshToken(refreshTokenClaims)
 			if err != nil {
-				return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
+				return handleClaimsAssistantError(err)
 			}
 			// The old access token and refresh token are no longer valid.
 			params.StoreAssistant.DeleteValue(accessToken)
@@ -331,11 +331,11 @@ func handleLogout(params *runtimeParameters) AuthorizedHandlerFunc {
 			// Let's invalidate (remove) it.
 			accessToken, err := getHeaderToken(r, params.Config.Cookies.AccessTokenName)
 			if err != nil {
-				return &httperr.Error{HTTPStatus: http.StatusUnauthorized, Error: err}
+				return createUnauthorizedError(err, "No access token provided.")
 			}
 			refreshToken, err := params.StoreAssistant.GetValue(accessToken)
 			if err != nil {
-				return &httperr.Error{HTTPStatus: http.StatusUnauthorized, Error: fmt.Errorf("no refresh token associated with access token. Err: %s", err)}
+				return createUnauthorizedError(err, "No refresh token associated with access token.")
 			}
 			params.Logger.Debug("Invalidating access token: ", accessToken)
 			params.StoreAssistant.DeleteValue(accessToken)
@@ -357,23 +357,11 @@ func handlePasswordLogin(params *runtimeParameters) http.HandlerFunc {
 			defer r.Body.Close()
 			err := json.NewDecoder(r.Body).Decode(&loginBody)
 			if err != nil {
-				return &httperr.Error{HTTPStatus: http.StatusBadRequest, Error: err}
+				return createMalformedRequestError(err, "Failed to parse passwordLoginBody JSON.")
 			}
 			userClaims, err := params.ClaimsAssistant.GetClaimsForPasswordLogin(loginBody.Username, loginBody.Password, params.Config.JWT.IssuerURI)
-			if err == ErrUnverifiedUser {
-				if loginBody.UnverifiedUserRedirectURI != "" {
-					// An unverified user has attempted to login without first verifying their email via the link that they should have been sent.
-					// Redirect to the provided redirection URI.
-					w.Header().Set("Location", loginBody.UnverifiedUserRedirectURI)
-					w.WriteHeader(http.StatusFound)
-					return nil
-				}
-				return &httperr.Error{HTTPStatus: http.StatusUnauthorized, Error: err}
-			} else if err == ErrIncorrectPassword {
-				// Does the password match the one provided?
-				return &httperr.Error{HTTPStatus: http.StatusUnauthorized, Error: err}
-			} else if err != nil {
-				return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
+			if err != nil {
+				return handleClaimsAssistantError(err)
 			}
 			// At this point, we are satisfied.
 			return handleSuccessfulLogin(w, r, userClaims, params)
@@ -388,11 +376,11 @@ func Authorized(h AuthorizedHandlerFunc, params *runtimeParameters) http.Handler
 		httperr.Handle(w, r, func(w http.ResponseWriter, r *http.Request) *httperr.Error {
 			accessToken, err := getHeaderToken(r, params.Config.Cookies.AccessTokenName)
 			if err != nil {
-				return &httperr.Error{HTTPStatus: http.StatusUnauthorized, Error: err}
+				return createUnauthorizedError(err, "No access token provided.")
 			}
 			accessClaims, err = parseAndValidateToken(accessToken, params.KeySet, params.Config.JWT.IssuerURI)
 			if err != nil {
-				return &httperr.Error{HTTPStatus: http.StatusUnauthorized, Error: fmt.Errorf("failed to validate access token. Err: %s", err)}
+				return createUnauthorizedError(err, "The supplied access token is invalid.")
 			}
 			return nil
 		}, params.ErrorHandler)
@@ -454,14 +442,14 @@ func loginWithAuthorizationCode(w http.ResponseWriter, r *http.Request, oidcProv
 	}
 	tokenResponse, err := http.PostForm(openIDConfiguration.TokenEndpoint, postData)
 	if err != nil {
-		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
+		return createCommunicationError(err, "An error occurred while POSTing to the token endpoint of the provider.")
 	}
 	defer tokenResponse.Body.Close()
 	// Parse the response (it might be an error if any of the verification codes are wrong).
 	var tokenBody Tokens
 	err = parseOidcResponse(oidcProviderConfig, tokenResponse.Body, &tokenBody, params.Logger)
 	if err != nil {
-		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
+		return createCommunicationError(err, "Could not parse the response from the provider's token endpoint.")
 	}
 	// If all is well, we will have an ID token, which we can go ahead and log in with.
 	return loginWithIDToken(w, r, oidcProviderConfig, openIDConfiguration, &tokenBody, loginBody.Nonce, params)
@@ -476,7 +464,7 @@ func loginWithIDToken(w http.ResponseWriter, r *http.Request, oidcProviderConfig
 	params.Logger.Debug(fmt.Sprintf("Retrieving keys from %s", openIDConfiguration.JwksURI))
 	set, err := jwk.Fetch(context.Background(), openIDConfiguration.JwksURI)
 	if err != nil {
-		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
+		return createCommunicationError(err, "Failed to read the provider's JWK key set.")
 	}
 	params.Logger.Debug(fmt.Sprintf("Retrieved %d keys from %s", set.Len(), openIDConfiguration.JwksURI))
 	jwtBytes := []byte(tokens.IDToken)
@@ -540,17 +528,17 @@ func loginWithIDToken(w http.ResponseWriter, r *http.Request, oidcProviderConfig
 		parsingOptions...,
 	)
 	if err != nil {
-		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
+		return createUnauthorizedError(err, "The ID token could not be validated.")
 	}
 	// At this point, we are satisfied.
 	params.Logger.Debug("Successfully parsed ID token.")
 	parsedTokenClaims, err := parsedToken.AsMap(context.Background())
 	if err != nil {
-		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
+		return createInternalError(err, "Failed to convert parsed token claims to a map.")
 	}
 	userClaims, err := params.ClaimsAssistant.GetClaimsForOpenIDToken(parsedTokenClaims, tokens)
 	if err != nil {
-		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: err}
+		return handleClaimsAssistantError(err)
 	}
 	// Okay, we now know that there is a valid login record (associated
 	// with the OpenID Connect "subject" & issuer), and that login
@@ -575,24 +563,24 @@ func handleSuccessfulLogin(w http.ResponseWriter, r *http.Request, userClaims *C
 
 	accessToken, accessTokenDuration, err := createSignedAccessToken(userClaims.AccessTokenClaims, params.Config.JWT, params.KeySet)
 	if err != nil {
-		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: fmt.Errorf("failed to create access JWT. Err: %s", err)}
+		return createTokenCreationError(err, "Failed to create access JWT.")
 	}
 	refreshToken, refreshTokenDuration, err := createSignedRefreshToken(userClaims.RefreshTokenClaims, params.Config.JWT, params.KeySet)
 	if err != nil {
-		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: fmt.Errorf("failed to create JWT. Err: %s", err)}
+		return createTokenCreationError(err, "Failed to create refresh JWT.")
 	}
 	// Set up the Redis data for this login.
 	// Associate the access token with the refresh token. This is so that, if the user explicitly
 	// logs out (using the access token), we can invalidate the corresponding refresh token.
 	err = params.StoreAssistant.SetValue(accessToken, refreshToken, accessTokenDuration)
 	if err != nil {
-		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: fmt.Errorf("failed to store access token. Err: %s", err)}
+		return createStoreAssistantError(err, "Failed to store the access token.")
 	}
 	params.Logger.Debug("Added access token to Redis: ", accessToken)
 	// Also keep the refresh token, and associate it with the access token
 	err = params.StoreAssistant.SetValue(refreshToken, accessToken, refreshTokenDuration)
 	if err != nil {
-		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: fmt.Errorf("failed to store refresh token. Err: %s", err)}
+		return createStoreAssistantError(err, "Failed to store the refresh token.")
 	}
 	params.Logger.Debug("Added refresh token to Redis: ", refreshToken)
 
@@ -610,7 +598,7 @@ func handleSuccessfulLogin(w http.ResponseWriter, r *http.Request, userClaims *C
 	params.Logger.Debug("Returning login tokens: ", tokens)
 	jsonResp, err := json.Marshal(tokens)
 	if err != nil {
-		return &httperr.Error{HTTPStatus: http.StatusInternalServerError, Error: fmt.Errorf("failed to marshal JSON response. Err: %s", err)}
+		return createInternalError(err, "Failed to marshal the tokens to JSON.")
 	}
 	w.Write(jsonResp)
 	return nil

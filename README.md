@@ -96,7 +96,7 @@ This method is called when a valid call to the `refreshEndpoint` is made. The cl
 GetClaimsForPasswordLogin(username string, password string, issuer string) (*goauth.Claims, error)
 ```
 
-Only called if you are using standard name+password login, via the `passwordLoginEndpoint`. Similar to the above, you must validate the login and, if valid, return a map of claims that you want to encode into the access/refresh tokens that goauth will return to your webapp. The `issuer` argument will be your own JWT issuer string, from the YAML config.
+Only called if you are using standard name+password login, via the `passwordLoginEndpoint`. Similar to the above, you must validate the login and, if valid, return a map of claims that you want to encode into the access/refresh tokens that goauth will return to your webapp. The `issuer` argument will be your own JWT issuer string, from the YAML config. Some readymade helper objects and functions exist for the implementation of this endpoint: you can return `goauth.ErrIncorrectPassword` as an error if the password does not match, or you can create an "unknown user" error with the `goauth.CreateNoSuchUserError(username)` method.
 
 # Error handling
 

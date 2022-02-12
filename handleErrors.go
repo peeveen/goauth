@@ -85,6 +85,8 @@ const storeAssistantErrorType = "storeAssistantError"      // An error occurred 
 const tokenCreationErrorType = "tokenCreation"             // An error occurred while creating/signing JWT tokens.
 const internalErrorType = "internalError"                  // Some other internal error occurred.
 const claimsAssistantErrorType = "claimsAssistantError"    // An error occurred during a request to the ClaimsAssistant
+const incorrectPasswordErrorType = "incorrectPassword"     // An incorrect password was supplied to the password login endpoint.
+const unknownUserErrorType = "unknownUser"                 // An unknown username was supplied to the password login endpoint.
 
 func createUnknownOpenIDConnectProviderError(provider string) *httperr.Error {
 	return &httperr.Error{Type: getHTTPErrorType(unknownProviderErrorType), Status: http.StatusBadRequest, Detail: fmt.Sprintf("Unknown OpenID Connect provider: '%s'", provider)}
@@ -124,4 +126,13 @@ func createBadFlowTypeError(provider string, flow string) *httperr.Error {
 
 func createClaimsAssistantError(e error) *httperr.Error {
 	return httperr.Wrap(e, &httperr.Error{Type: getHTTPErrorType(claimsAssistantErrorType), Status: http.StatusInternalServerError, Detail: e.Error()})
+}
+
+func createIncorrectPasswordError() *httperr.Error {
+	return &httperr.Error{Type: getHTTPErrorType(incorrectPasswordErrorType), Status: http.StatusUnauthorized, Detail: "The supplied password was incorrect."}
+}
+
+// CreateNoSuchUserError will create an HTTP error containing a message that reads "The user '....' does not exist."
+func CreateNoSuchUserError(user string) *httperr.Error {
+	return &httperr.Error{Type: getHTTPErrorType(unknownUserErrorType), Status: http.StatusUnauthorized, Detail: "The user '%s' does not exist."}
 }

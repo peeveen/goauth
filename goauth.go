@@ -85,6 +85,10 @@ type passwordLoginBody struct {
 const authorizationCodeFlowName = "authorization_code"
 const implicitFlowName = "implicit"
 
+// ErrIncorrectPassword is the error to return from ClaimsAssistant.ValidatePasswordLogin when the supplied
+// password is wrong.
+var ErrIncorrectPassword = createIncorrectPasswordError()
+
 // Service is the object you'll get back from Build(), containing everything you need.
 // You can use the various HandlerFuncs to hook up your own router handlers.
 // Or you can use the ApplyRoutes() function to do it for you.

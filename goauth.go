@@ -3,7 +3,6 @@ package goauth
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -76,25 +75,15 @@ type Tokens struct {
 	IDToken      string `json:"id_token,omitempty"`
 }
 
-// Request body for username + password login. If an unverified user attempting login is a possibility,
-// you can provide a URL that we can redirect to for you to show extra UI (e.g. "Resend verification email")
+// Request body for username + password login.
 type passwordLoginBody struct {
-	Username                  string `json:"username"`
-	Password                  string `json:"password"`
-	UnverifiedUserRedirectURI string `json:"unverified_user_redirect_uri"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 // String identifiers for supported authorization flows.
 const authorizationCodeFlowName = "authorization_code"
 const implicitFlowName = "implicit"
-
-// ErrIncorrectPassword is the error to return from ClaimsAssistant.ValidatePasswordLogin when the supplied
-// password is wrong.
-var ErrIncorrectPassword = errors.New("incorrect password")
-
-// ErrUnverifiedUser is the error to return from ClaimsAssistant.ValidatePasswordLogin when the user has
-// not yet verified their identity (via email link, or whatever).
-var ErrUnverifiedUser = errors.New("this user is not yet verified")
 
 // Service is the object you'll get back from Build(), containing everything you need.
 // You can use the various HandlerFuncs to hook up your own router handlers.

@@ -6,7 +6,7 @@ require (
 	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/gorilla/mux v1.8.0
 	github.com/lestrrat-go/jwx v1.2.17
-	github.com/peeveen/httperrorhandler v0.2.3-0.20220212114029-2af8528bbee4
+	github.com/peeveen/httperrorhandler v0.2.3
 	github.com/sirupsen/logrus v1.8.1
 	gopkg.in/yaml.v2 v2.4.0
 )
